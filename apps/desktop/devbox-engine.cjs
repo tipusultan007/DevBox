@@ -5,14 +5,64 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
+const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
-const { exec, spawn } = require('child_process');
+const { exec, execSync, spawn } = require('child_process');
 
 const PORT = 1421;
 const ROOT_DIR = path.resolve(__dirname, '../../');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const DB_PATH = path.join(DATA_DIR, 'devbox.sqlite');
 const RUNTIMES_DIR = path.join(ROOT_DIR, 'runtime', 'manifests');
+
+// Active child tunnels map: id -> { proc, pid, publicUrl, hostname, projectId }
+const activeTunnels = new Map();
+// Active project PHP servers: projectId -> { proc, port, docRoot }
+const projectPhpServers = new Map();
+
+function getCloudflaredPath() {
+  const candidates = [
+    'C:\\DevBox\\bin\\cloudflared.exe',
+    'C:\\DevBox\\runtimes\\cloudflared\\cloudflared.exe',
+    path.join(ROOT_DIR, 'bin', 'cloudflared.exe')
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return 'cloudflared';
+}
+
+function ensureProjectPhpServer(projectId, docRoot) {
+  if (projectPhpServers.has(projectId)) {
+    const existing = projectPhpServers.get(projectId);
+    if (existing.docRoot === docRoot) return existing;
+    try { existing.proc.kill(); } catch {}
+    projectPhpServers.delete(projectId);
+  }
+
+  if (!docRoot || !fs.existsSync(docRoot)) return null;
+
+  const port = 18000 + Number(projectId);
+  try {
+    const phpProc = spawn('php', ['-S', `127.0.0.1:${port}`, '-t', docRoot], {
+      cwd: docRoot,
+      windowsHide: true,
+      stdio: 'ignore'
+    });
+
+    const entry = { proc: phpProc, port, docRoot };
+    projectPhpServers.set(projectId, entry);
+
+    phpProc.on('exit', () => {
+      projectPhpServers.delete(projectId);
+    });
+
+    return entry;
+  } catch (err) {
+    console.warn(`[PHP Server] Could not spawn php -S for project ${projectId}:`, err.message);
+    return null;
+  }
+}
 
 // 1. Initialize SQLite Database
 if (!fs.existsSync(DATA_DIR)) {
@@ -192,7 +242,21 @@ async function handleApiRequest(req, res) {
 
     if (pathname === '/api/projects' && req.method === 'POST') {
       const body = await readBody();
-      const slug = (body.name || 'project').toLowerCase().replace(/[^a-z0-9]/g, '-');
+      let baseSlug = (body.name || 'project').toLowerCase().replace(/[^a-z0-9]/g, '-');
+      let slug = baseSlug;
+      let counter = 1;
+      while (db.prepare('SELECT id FROM projects WHERE slug = ?').get(slug)) {
+        slug = `${baseSlug}-${counter++}`;
+      }
+      let rawDomain = body.domain || `${slug}.test`;
+      let domain = rawDomain;
+      let baseDomain = domain.replace(/\.[a-z]+$/, '');
+      let tld = (domain.match(/\.[a-z]+$/) || ['.test'])[0];
+      let domCounter = 1;
+      while (db.prepare('SELECT id FROM domains WHERE hostname = ?').get(domain)) {
+        domain = `${baseDomain}-${domCounter++}${tld}`;
+      }
+
       const insert = db.prepare(`
         INSERT INTO projects (name, slug, path, project_type, domain, https_enabled, php_version, web_server, status)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running')
@@ -202,7 +266,7 @@ async function handleApiRequest(req, res) {
         slug,
         body.path || `D:\\Projects\\${slug}`,
         body.project_type || 'laravel',
-        body.domain || `${slug}.test`,
+        domain,
         body.https_enabled ? 1 : 0,
         body.php_version || '8.3',
         body.web_server || 'apache'
@@ -213,7 +277,7 @@ async function handleApiRequest(req, res) {
       db.prepare(`
         INSERT INTO domains (project_id, hostname, port, ssl_port, protocol, ssl_enabled, hosts_entry_active)
         VALUES (?, ?, 80, 443, 'https', 1, 1)
-      `).run(newId, body.domain || `${slug}.test`);
+      `).run(newId, domain);
 
       // Add database if mysql selected
       if (body.services && body.services.includes('mysql')) {
@@ -225,42 +289,256 @@ async function handleApiRequest(req, res) {
 
       // Scaffolding physical project files on disk
       try {
-        const projDir = body.path || `D:\\Projects\\${slug}`;
+        const existingPathProject = body.path ? db.prepare('SELECT id FROM projects WHERE path = ? AND id != ?').get(body.path, newId) : null;
+        const projDir = (body.path && !existingPathProject) ? body.path : path.join('D:\\Projects', slug);
+        db.prepare('UPDATE projects SET path = ? WHERE id = ?').run(projDir, newId);
         const devboxMetaDir = path.join(projDir, '.devbox');
-        const publicDir = path.join(projDir, 'public');
         fs.mkdirSync(devboxMetaDir, { recursive: true });
-        fs.mkdirSync(publicDir, { recursive: true });
+        fs.mkdirSync(projDir, { recursive: true });
 
+        const projectType = body.project_type || 'laravel';
+        const dbName = slug.replace(/-/g, '_');
+        const cacheDir = path.join(ROOT_DIR, 'cache');
+        if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+
+        // 1. Framework Scaffolding
+        if (projectType === 'wordpress') {
+          const wpZip = path.join(cacheDir, 'wordpress-latest.zip');
+          if (!fs.existsSync(wpZip)) {
+            try {
+              execSync(`curl.exe -L "https://wordpress.org/latest.zip" -o "${wpZip}"`, { windowsHide: true, timeout: 60000 });
+            } catch (e) {
+              console.warn('Failed to download WordPress zip:', e.message);
+            }
+          }
+          if (fs.existsSync(wpZip)) {
+            try {
+              execSync(`tar -xf "${wpZip}" -C "${projDir}" --strip-components=1`, { windowsHide: true, timeout: 30000 });
+            } catch (e) {
+              console.warn('tar extraction failed:', e.message);
+            }
+          }
+
+          // Pre-configure wp-config.php with MySQL DB settings and dynamic salts
+          const wpConfig = `<?php
+/**
+ * The base configuration for WordPress
+ * Generated by DevBox for ${body.name}
+ */
+define( 'DB_NAME', '${dbName}' );
+define( 'DB_USER', 'root' );
+define( 'DB_PASSWORD', '' );
+define( 'DB_HOST', '127.0.0.1' );
+define( 'DB_CHARSET', 'utf8mb4' );
+define( 'DB_COLLATE', '' );
+
+define( 'AUTH_KEY',         '${crypto.randomBytes(32).toString('hex')}' );
+define( 'SECURE_AUTH_KEY',  '${crypto.randomBytes(32).toString('hex')}' );
+define( 'LOGGED_IN_KEY',    '${crypto.randomBytes(32).toString('hex')}' );
+define( 'NONCE_KEY',        '${crypto.randomBytes(32).toString('hex')}' );
+define( 'AUTH_SALT',        '${crypto.randomBytes(32).toString('hex')}' );
+define( 'SECURE_AUTH_SALT', '${crypto.randomBytes(32).toString('hex')}' );
+define( 'LOGGED_IN_SALT',   '${crypto.randomBytes(32).toString('hex')}' );
+define( 'NONCE_SALT',       '${crypto.randomBytes(32).toString('hex')}' );
+
+$table_prefix = 'wp_';
+
+define( 'WP_DEBUG', true );
+define( 'WP_DEBUG_LOG', true );
+define( 'WP_DEBUG_DISPLAY', false );
+
+if ( ! defined( 'ABSPATH' ) ) {
+    define( 'ABSPATH', __DIR__ . '/' );
+}
+
+require_once ABSPATH . 'wp-settings.php';
+`;
+          fs.writeFileSync(path.join(projDir, 'wp-config.php'), wpConfig);
+
+          // .htaccess for WordPress
+          const htaccess = `# BEGIN WordPress
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteBase /
+RewriteRule ^index\\.php$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.php [L]
+</IfModule>
+# END WordPress
+`;
+          fs.writeFileSync(path.join(projDir, '.htaccess'), htaccess);
+          recordLog('project', 'info', `WordPress downloaded & scaffolded for ${body.name} at ${projDir}`);
+        } else if (projectType === 'laravel') {
+          const laravelZip = path.join(cacheDir, 'laravel-11.zip');
+          if (!fs.existsSync(laravelZip)) {
+            try {
+              execSync(`curl.exe -L "https://github.com/laravel/laravel/archive/refs/heads/11.x.zip" -o "${laravelZip}"`, { windowsHide: true, timeout: 60000 });
+            } catch (e) {
+              console.warn('Failed to download Laravel zip:', e.message);
+            }
+          }
+          if (fs.existsSync(laravelZip)) {
+            try {
+              execSync(`tar -xf "${laravelZip}" -C "${projDir}" --strip-components=1`, { windowsHide: true, timeout: 30000 });
+            } catch (e) {
+              console.warn('tar extraction failed:', e.message);
+            }
+          }
+
+          // Ensure storage structure
+          const storageDirs = [
+            'storage/app/public',
+            'storage/framework/cache/data',
+            'storage/framework/sessions',
+            'storage/framework/views',
+            'storage/logs',
+            'bootstrap/cache'
+          ];
+          for (const d of storageDirs) {
+            fs.mkdirSync(path.join(projDir, d), { recursive: true });
+          }
+
+          // Full Laravel .env
+          const appKey = `base64:${crypto.randomBytes(32).toString('base64')}`;
+          const envContent = `APP_NAME="${body.name}"
+APP_ENV=local
+APP_KEY=${appKey}
+APP_DEBUG=true
+APP_TIMEZONE=UTC
+APP_URL=https://${body.domain || slug + '.test'}
+
+APP_LOCALE=en
+APP_FALLBACK_LOCALE=en
+APP_FAKER_LOCALE=en_US
+
+APP_MAINTENANCE_DRIVER=file
+
+BCRYPT_ROUNDS=12
+
+LOG_CHANNEL=stack
+LOG_STACK=single
+LOG_DEPRECATIONS_CHANNEL=null
+LOG_LEVEL=debug
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=${dbName}
+DB_USERNAME=root
+DB_PASSWORD=
+
+SESSION_DRIVER=file
+SESSION_LIFETIME=120
+SESSION_ENCRYPT=false
+SESSION_PATH=/
+SESSION_DOMAIN=null
+
+BROADCAST_CONNECTION=log
+FILESYSTEM_DISK=local
+QUEUE_CONNECTION=sync
+
+CACHE_STORE=file
+CACHE_PREFIX=
+
+REDIS_CLIENT=phpredis
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+MAIL_MAILER=log
+MAIL_HOST=127.0.0.1
+MAIL_PORT=1025
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=null
+MAIL_FROM_ADDRESS="hello@${body.domain || slug + '.test'}"
+MAIL_FROM_NAME="\${APP_NAME}"
+`;
+          fs.writeFileSync(path.join(projDir, '.env'), envContent);
+          fs.writeFileSync(path.join(projDir, '.env.example'), envContent);
+          recordLog('project', 'info', `Laravel 11 application starter scaffolded for ${body.name} at ${projDir}`);
+        } else if (projectType === 'symfony') {
+          const symfonyZip = path.join(cacheDir, 'symfony-7.1.zip');
+          if (fs.existsSync(symfonyZip)) {
+            try {
+              execSync(`tar -xf "${symfonyZip}" -C "${projDir}" --strip-components=1`, { windowsHide: true, timeout: 30000 });
+            } catch (e) {}
+          }
+          const publicDir = path.join(projDir, 'public');
+          fs.mkdirSync(publicDir, { recursive: true });
+          if (!fs.existsSync(path.join(publicDir, 'index.php'))) {
+            fs.writeFileSync(path.join(publicDir, 'index.php'), `<?php\nuse App\\Kernel;\nrequire_once dirname(__DIR__).'/vendor/autoload_runtime.php';\nreturn function (array $context) { return new Kernel($context['APP_ENV'], (bool) $context['APP_DEBUG']); };\n`);
+          }
+          recordLog('project', 'info', `Symfony starter scaffolded for ${body.name}`);
+        } else {
+          // Custom PHP
+          const publicDir = path.join(projDir, 'public');
+          fs.mkdirSync(publicDir, { recursive: true });
+          const indexPhp = `<?php\nheader('Content-Type: text/html; charset=utf-8');\n?>\n<!DOCTYPE html>\n<html>\n<head><title>${body.name} - DevBox</title><style>body{background:#0b0f19;color:#fff;font-family:sans-serif;padding:50px;text-align:center;} .box{max-width:600px;margin:0 auto;background:rgba(255,255,255,0.05);padding:30px;border-radius:16px;border:1px solid rgba(255,255,255,0.1);} h1{color:#38bdf8;} code{background:#1e293b;padding:4px 8px;border-radius:6px;}</style></head>\n<body><div class="box"><h1>${body.name} is Live!</h1><p>PHP Version: <code><?= phpversion() ?></code></p><p>Document Root: <code><?= __DIR__ ?></code></p></div></body></html>`;
+          fs.writeFileSync(path.join(publicDir, 'index.php'), indexPhp);
+          fs.writeFileSync(path.join(projDir, 'index.php'), indexPhp);
+          recordLog('project', 'info', `Custom PHP starter scaffolded for ${body.name}`);
+        }
+
+        // 2. Metadata .devbox/project.json
         fs.writeFileSync(
           path.join(devboxMetaDir, 'project.json'),
           JSON.stringify({
             name: body.name,
-            type: body.project_type,
-            php: body.php_version,
-            web_server: body.web_server,
+            type: projectType,
+            php: body.php_version || '8.3',
+            web_server: body.web_server || 'apache',
             domain: body.domain,
-            ssl: body.https_enabled,
-            database: { enabled: true, name: slug.replace(/-/g, '_') },
+            ssl: body.https_enabled !== false,
+            database: { enabled: true, name: dbName },
             redis: body.services?.includes('redis') || false
           }, null, 2)
         );
 
-        // Starter .env
-        const envContent = `APP_NAME="${body.name}"\nAPP_ENV=local\nAPP_KEY=base64:DevBoxGeneratedAppKey32ByteString==\nAPP_DEBUG=true\nAPP_URL=https://${body.domain || slug + '.test'}\n\nDB_CONNECTION=mysql\nDB_HOST=127.0.0.1\nDB_PORT=3306\nDB_DATABASE=${slug.replace(/-/g, '_')}\nDB_USERNAME=root\nDB_PASSWORD=\n\nCACHE_DRIVER=redis\nQUEUE_CONNECTION=redis\nREDIS_HOST=127.0.0.1\nREDIS_PASSWORD=null\nREDIS_PORT=6379\n\nMAIL_MAILER=smtp\nMAIL_HOST=127.0.0.1\nMAIL_PORT=1025\n`;
-        fs.writeFileSync(path.join(projDir, '.env'), envContent);
-
-        // Starter public/index.php
-        const indexPhp = `<?php\n/**\n * DevBox Scaffolded Application Starter\n * Project: ${body.name} (${body.project_type})\n * Domain: ${body.domain || slug + '.test'}\n */\n\nheader('Content-Type: text/html; charset=utf-8');\n?>\n<!DOCTYPE html>\n<html>\n<head>\n  <title>${body.name} - Online</title>\n  <style>body{background:#0b0f19;color:#fff;font-family:sans-serif;padding:50px;text-align:center;} .box{max-width:600px;margin:0 auto;background:rgba(255,255,255,0.05);padding:30px;border-radius:16px;border:1px solid rgba(255,255,255,0.1);} h1{color:#38bdf8;} code{background:#1e293b;padding:4px 8px;border-radius:6px;}</style>\n</head>\n<body>\n  <div class="box">\n    <h1>${body.name} is Live!</h1>\n    <p>PHP Version: <code><?= phpversion() ?></code></p>\n    <p>Project Type: <code>${body.project_type}</code></p>\n    <p>Document Root: <code><?= __DIR__ ?></code></p>\n    <p style="margin-top:20px;"><a href="http://localhost:1420" style="color:#60a5fa;">Back to DevBox Dashboard</a></p>\n  </div>\n</body>\n</html>`;
-        fs.writeFileSync(path.join(publicDir, 'index.php'), indexPhp);
-        fs.writeFileSync(path.join(publicDir, 'index.html'), indexPhp.replace(/<\?php[\s\S]*?\?>/g, 'PHP 8.3'));
-
-        // Scaffolding Apache / Nginx VHosts configs
+        // 3. Apache and Nginx Virtual Hosts config
         const vhostsDir = path.join(ROOT_DIR, 'config', 'vhosts');
         fs.mkdirSync(vhostsDir, { recursive: true });
-        const apacheVhost = `<VirtualHost *:80>\n    ServerName ${body.domain}\n    DocumentRoot "${publicDir.replace(/\\/g, '/')}"\n    <Directory "${publicDir.replace(/\\/g, '/')}">\n        Options Indexes FollowSymLinks\n        AllowOverride All\n        Require all granted\n    </Directory>\n</VirtualHost>\n<VirtualHost *:443>\n    ServerName ${body.domain}\n    DocumentRoot "${publicDir.replace(/\\/g, '/')}"\n    SSLEngine on\n    SSLCertificateFile "${SSL_CERT_PATH.replace(/\\/g, '/')}"\n    SSLCertificateKeyFile "${SSL_KEY_PATH.replace(/\\/g, '/')}"\n</VirtualHost>\n`;
+        const isWp = projectType === 'wordpress';
+        const docRoot = isWp ? projDir : (fs.existsSync(path.join(projDir, 'public')) ? path.join(projDir, 'public') : projDir);
+        const apacheVhost = `<VirtualHost *:80>
+    ServerName ${body.domain}
+    DocumentRoot "${docRoot.replace(/\\/g, '/')}"
+    <Directory "${docRoot.replace(/\\/g, '/')}">
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+<VirtualHost *:443>
+    ServerName ${body.domain}
+    DocumentRoot "${docRoot.replace(/\\/g, '/')}"
+    SSLEngine on
+    SSLCertificateFile "${SSL_CERT_PATH.replace(/\\/g, '/')}"
+    SSLCertificateKeyFile "${SSL_KEY_PATH.replace(/\\/g, '/')}"
+    <Directory "${docRoot.replace(/\\/g, '/')}">
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+`;
         fs.writeFileSync(path.join(vhostsDir, `${slug}.conf`), apacheVhost);
+
+        // 4. Git Initialization
+        if (body.init_git !== false) {
+          try {
+            execSync('git init -b main', { cwd: projDir, windowsHide: true });
+            execSync('git add .', { cwd: projDir, windowsHide: true });
+            execSync(`git commit -m "Scaffold ${body.name} (${projectType}) with DevBox"`, { cwd: projDir, windowsHide: true });
+          } catch (e) {}
+        }
+
+        // 5. Spawn project PHP worker
+        ensureProjectPhpServer(newId, docRoot);
       } catch (err) {
-        // Ignored if drive/dir is mock
+        console.warn('Scaffolding warning:', err.message);
       }
 
       const created = db.prepare('SELECT * FROM projects WHERE id = ?').get(newId);
@@ -382,22 +660,133 @@ async function handleApiRequest(req, res) {
     if (pathname === '/api/tunnels/quick' && req.method === 'POST') {
       const body = await readBody();
       const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(body.project_id);
-      const randHex = Math.floor(Math.random() * 0xfffff).toString(16);
-      const sub = `${project?.slug || 'project'}-${randHex}`;
-      const pubUrl = `https://${sub}.trycloudflare.com`;
+      if (!project) {
+        return jsonResponse({ error: 'Project not found' }, 404);
+      }
 
-      const insert = db.prepare(`
-        INSERT INTO tunnels (project_id, provider, mode, name, hostname, target_url, public_url, status, pid)
-        VALUES (?, 'cloudflare', 'quick', ?, ?, 'http://localhost:80', ?, 'active', ?)
-      `);
-      const result = insert.run(body.project_id, project?.name || 'Project', `${sub}.trycloudflare.com`, pubUrl, Math.floor(Math.random() * 3000 + 7000));
-      const created = db.prepare('SELECT * FROM tunnels WHERE id = ?').get(result.lastInsertRowid);
-      return jsonResponse(created);
+      let cloudflaredBin = getCloudflaredPath();
+      if (!fs.existsSync(cloudflaredBin)) {
+        try {
+          fs.mkdirSync('C:\\DevBox\\bin', { recursive: true });
+          execSync('curl.exe -L "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -o "C:\\DevBox\\bin\\cloudflared.exe"', { windowsHide: true, timeout: 60000 });
+          cloudflaredBin = 'C:\\DevBox\\bin\\cloudflared.exe';
+        } catch (e) {
+          console.warn('Failed to auto-download cloudflared:', e.message);
+        }
+      }
+
+      const targetDomain = project.domain || `${project.slug}.test`;
+      const args = [
+        'tunnel',
+        '--url', 'http://127.0.0.1:80',
+        '--http-host-header', targetDomain
+      ];
+
+      try {
+        const tunnelInfo = await new Promise((resolve, reject) => {
+          let resolved = false;
+          const child = spawn(cloudflaredBin, args, { windowsHide: true });
+          let captured = '';
+
+          const handleData = (chunk) => {
+            const text = chunk.toString();
+            captured += text;
+            const match = captured.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
+            if (match && !resolved) {
+              resolved = true;
+              clearTimeout(timer);
+              const pubUrl = match[0];
+              const host = new URL(pubUrl).hostname;
+              resolve({ child, publicUrl: pubUrl, hostname: host });
+            }
+          };
+
+          child.stdout.on('data', handleData);
+          child.stderr.on('data', handleData);
+
+          child.on('error', (err) => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timer);
+              reject(err);
+            }
+          });
+
+          child.on('exit', (code) => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timer);
+              reject(new Error(`cloudflared exited unexpectedly with code ${code}`));
+            }
+          });
+
+          const timer = setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              try { child.kill(); } catch {}
+              reject(new Error('Cloudflare tunnel generation timed out (20s)'));
+            }
+          }, 20000);
+        });
+
+        const insert = db.prepare(`
+          INSERT INTO tunnels (project_id, provider, mode, name, hostname, target_url, public_url, status, pid)
+          VALUES (?, 'cloudflare', 'quick', ?, ?, 'http://127.0.0.1:80', ?, 'active', ?)
+        `);
+        const result = insert.run(
+          body.project_id,
+          `${project.name} Quick Tunnel`,
+          tunnelInfo.hostname,
+          tunnelInfo.publicUrl,
+          tunnelInfo.child.pid
+        );
+        const tunnelId = Number(result.lastInsertRowid);
+
+        activeTunnels.set(tunnelId, {
+          proc: tunnelInfo.child,
+          pid: tunnelInfo.child.pid,
+          publicUrl: tunnelInfo.publicUrl,
+          hostname: tunnelInfo.hostname,
+          projectId: project.id
+        });
+
+        tunnelInfo.child.on('exit', () => {
+          activeTunnels.delete(tunnelId);
+          try {
+            db.prepare("UPDATE tunnels SET status = 'inactive' WHERE id = ?").run(tunnelId);
+          } catch {}
+        });
+
+        recordLog('cloudflared', 'info', `Quick tunnel active: ${tunnelInfo.publicUrl} -> ${targetDomain}`);
+
+        const created = db.prepare(`
+          SELECT t.*, p.name as project_name
+          FROM tunnels t
+          LEFT JOIN projects p ON t.project_id = p.id
+          WHERE t.id = ?
+        `).get(tunnelId);
+        return jsonResponse(created);
+      } catch (err) {
+        console.error('[Cloudflare Tunnel Error]:', err.message);
+        return jsonResponse({ error: `Cloudflare Tunnel failed: ${err.message}` }, 500);
+      }
     }
 
     if (pathname.startsWith('/api/tunnels/') && req.method === 'DELETE') {
-      const id = pathname.split('/')[3];
-      db.prepare('DELETE FROM tunnels WHERE id = ?').run(id);
+      const id = Number(pathname.split('/')[3]);
+      const tunnel = db.prepare('SELECT * FROM tunnels WHERE id = ?').get(id);
+      if (tunnel) {
+        const active = activeTunnels.get(id);
+        if (active && active.proc) {
+          try { active.proc.kill('SIGTERM'); } catch {}
+        }
+        if (tunnel.pid) {
+          try { process.kill(tunnel.pid); } catch {}
+        }
+        activeTunnels.delete(id);
+        db.prepare("UPDATE tunnels SET status = 'inactive' WHERE id = ?").run(id);
+        recordLog('cloudflared', 'info', `Quick tunnel stopped for ID ${id}`);
+      }
       return jsonResponse({ success: true });
     }
 
@@ -1668,6 +2057,14 @@ function handleVhostRequest(req, res, isHttps) {
   // 1. Direct project lookup by host
   let project = db.prepare('SELECT * FROM projects WHERE domain = ? OR slug = ?').get(rawHost, rawHost);
 
+  // 1b. Check Cloudflare tunnel host
+  if (!project && (rawHost.endsWith('.trycloudflare.com') || rawHost.includes('trycloudflare'))) {
+    const tunnel = db.prepare("SELECT * FROM tunnels WHERE status = 'active' AND (hostname = ? OR public_url LIKE ?)").get(rawHost, `%${rawHost}%`);
+    if (tunnel) {
+      project = db.prepare('SELECT * FROM projects WHERE id = ?').get(tunnel.project_id);
+    }
+  }
+
   // 2. Gateway fallback for localhost / 127.0.0.1
   if (!project && (rawHost === 'localhost' || rawHost === '127.0.0.1')) {
     const firstSegment = pathname.split('/')[1];
@@ -1689,12 +2086,49 @@ function handleVhostRequest(req, res, isHttps) {
     return serve404Html(res, rawHost, allProjects);
   }
 
-  // 5. Serve project
+  // 5. Serve project with real PHP proxy or static files
   const projPath = project.path || '';
+  const isWp = project.project_type === 'wordpress';
   const publicDir = path.join(projPath, 'public');
-  const targetDir = fs.existsSync(publicDir) ? publicDir : (fs.existsSync(projPath) ? projPath : null);
+  const targetDir = isWp ? (fs.existsSync(projPath) ? projPath : null) : (fs.existsSync(publicDir) ? publicDir : (fs.existsSync(projPath) ? projPath : null));
 
   if (project.status === 'running' && targetDir) {
+    // 5a. If PHP server worker is running or can run, proxy request
+    const phpEntry = ensureProjectPhpServer(project.id, targetDir);
+    if (phpEntry && phpEntry.port) {
+      const options = {
+        hostname: '127.0.0.1',
+        port: phpEntry.port,
+        path: req.url,
+        method: req.method,
+        headers: {
+          ...req.headers,
+          host: project.domain || 'localhost',
+          'x-forwarded-for': req.socket.remoteAddress || '127.0.0.1',
+          'x-forwarded-proto': isHttps ? 'https' : 'http'
+        }
+      };
+
+      const proxyReq = http.request(options, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.pipe(res);
+      });
+
+      proxyReq.on('error', () => {
+        // Fallback to static or project hub
+        const relativeFile = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
+        const candidateFile = path.join(targetDir, relativeFile);
+        if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).isFile()) {
+          return serveStaticFile(res, candidateFile);
+        }
+        serveProjectHubHtml(res, project, isHttps);
+      });
+
+      req.pipe(proxyReq);
+      return;
+    }
+
+    // 5b. Static fallback
     const relativeFile = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
     const candidateFile = path.join(targetDir, relativeFile);
     if (fs.existsSync(candidateFile) && fs.statSync(candidateFile).isFile()) {

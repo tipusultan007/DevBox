@@ -44,6 +44,14 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handleFrameworkSelect = (type: ProjectType) => {
+    setProjectType(type);
+    const prefix = type === 'wordpress' ? 'my-wordpress-blog' : type === 'laravel' ? 'my-laravel-app' : type === 'symfony' ? 'my-symfony-app' : 'my-php-site';
+    setName(prefix);
+    setDomain(`${prefix}.test`);
+    setPath(`D:\\Projects\\${prefix}`);
+  };
+
   const handleNameChange = (val: string) => {
     setName(val);
     const slug = val.toLowerCase().replace(/[^a-z0-9]/g, '-');
@@ -59,8 +67,27 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({
 
   const handleCreate = async () => {
     setIsSubmitting(true);
+    const frameworkLogs = projectType === 'wordpress' ? [
+      'Downloading WordPress core package (latest.zip) from wordpress.org...',
+      `Extracting WordPress files into ${path}...`,
+      'Configuring wp-config.php with local MySQL credentials & dynamic salts...',
+      'Setting up WordPress .htaccess rewrite rules...'
+    ] : projectType === 'laravel' ? [
+      'Downloading & extracting official Laravel 11 application starter...',
+      `Extracting Laravel architecture into ${path}...`,
+      'Scaffolding artisan, bootstrap, config, routes, database, and storage...',
+      'Generating APP_KEY and tailoring .env configuration...'
+    ] : projectType === 'symfony' ? [
+      `Scaffolding Symfony application skeleton into ${path}...`,
+      'Creating public/index.php and bin/console...'
+    ] : [
+      `Creating custom PHP project structure at ${path}...`,
+      'Creating index.php and composer.json boilerplate...'
+    ];
+
     setInstallLogs([
       'Initializing project environment...',
+      ...frameworkLogs,
       `Configuring PHP ${phpVersion} runtime profile...`,
       'Provisioning ' + webServer.toUpperCase() + ' virtual host for ' + domain + '...',
       'Generating local SSL certificate & registering with DevBox Root CA...',
@@ -139,7 +166,7 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({
                 ].map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => setProjectType(item.id as ProjectType)}
+                    onClick={() => handleFrameworkSelect(item.id as ProjectType)}
                     className={`p-3.5 rounded-xl text-left border transition-all ${
                       projectType === item.id
                         ? 'bg-blue-600/15 border-blue-500 text-white shadow-glow'

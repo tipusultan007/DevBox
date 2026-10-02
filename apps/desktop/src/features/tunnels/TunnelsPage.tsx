@@ -21,7 +21,7 @@ import { TunnelItem, Project } from '../../types';
 interface TunnelsPageProps {
   tunnels: TunnelItem[];
   projects: Project[];
-  onStartQuickTunnel: (projectId: number) => Promise<void>;
+  onStartQuickTunnel: (projectId: number) => Promise<any>;
   onStopTunnel: (id: number) => Promise<void>;
 }
 

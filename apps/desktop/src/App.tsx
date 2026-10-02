@@ -170,9 +170,10 @@ export const App: React.FC = () => {
   };
 
   const handleStartQuickTunnel = async (projectId: number) => {
-    await api.startQuickTunnel(projectId, 'http://localhost:80');
+    const created = await api.startQuickTunnel(projectId, 'http://localhost:80');
     const updated = await api.listTunnels();
     setTunnels(updated);
+    return created;
   };
 
   const handleStopTunnel = async (id: number) => {
@@ -434,6 +435,7 @@ export const App: React.FC = () => {
         onClose={() => setIsShareModalOpen(false)}
         project={shareProject}
         onGenerateTunnel={handleStartQuickTunnel}
+        activeTunnel={tunnels.find(t => t.project_id === shareProject?.id && t.status === 'active')}
       />
 
       <ProjectHealthModal

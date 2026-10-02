@@ -6,7 +6,8 @@ interface ShareProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
   project: Project | null;
-  onGenerateTunnel: (projectId: number) => Promise<void>;
+  onGenerateTunnel: (projectId: number) => Promise<any>;
+  activeTunnel?: any | null;
 }
 
 export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
@@ -14,26 +15,43 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
   onClose,
   project,
   onGenerateTunnel,
+  activeTunnel,
 }) => {
   const [duration, setDuration] = useState<'1h' | '4h' | 'permanent'>('permanent');
   const [accessMode, setAccessMode] = useState<'public' | 'password'>('password');
   const [passwordPin, setPasswordPin] = useState('demo-9824');
   const [isWebhookMode, setIsWebhookMode] = useState(false);
-  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(activeTunnel?.public_url || null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [tunnelError, setTunnelError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (activeTunnel?.public_url) {
+      setGeneratedUrl(activeTunnel.public_url);
+    } else {
+      setGeneratedUrl(null);
+    }
+    setTunnelError(null);
+  }, [project, activeTunnel, isOpen]);
 
   if (!isOpen) return null;
 
   const handleGenerate = async () => {
+    if (!project) return;
     setIsGenerating(true);
-    if (project) {
-      await onGenerateTunnel(project.id);
+    setTunnelError(null);
+    try {
+      const res = await onGenerateTunnel(project.id);
+      if (res && res.public_url) {
+        setGeneratedUrl(res.public_url);
+      }
+    } catch (err: any) {
+      console.error('Tunnel launch error:', err);
+      setTunnelError(err?.message || 'Failed to start Cloudflare Tunnel');
+    } finally {
+      setIsGenerating(false);
     }
-    const randHex = Math.floor(Math.random() * 0xfffff).toString(16);
-    const prefix = isWebhookMode ? 'webhook' : (project?.slug || 'preview');
-    setGeneratedUrl(`https://${prefix}-${randHex}.trycloudflare.com`);
-    setIsGenerating(false);
   };
 
   const handleCopy = () => {
@@ -92,6 +110,12 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
               <span>Webhook Mode</span>
             </button>
           </div>
+
+          {tunnelError && (
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-mono animate-in fade-in">
+              ⚠ {tunnelError}
+            </div>
+          )}
 
           {isWebhookMode ? (
             <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 space-y-2">
