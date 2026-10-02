@@ -1,0 +1,10 @@
+[paths]
+devbox_root = "C:\\DevBox"
+projects_dir = "D:\\Projects"
+runtimes_dir = "C:\\DevBox\\runtimes"
+data_dir = "C:\\DevBox\\data"
+logs_dir = "C:\\DevBox\\logs"
+backups_dir = "C:\\DevBox\\backups"
+ssl_dir = "C:\\DevBox\\ssl"
+temp_dir = "C:\\DevBox\\temp"
+hosts_file = "C:\\Windows\\System32\\drivers\\etc\\hosts"

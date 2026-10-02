@@ -1,0 +1,16 @@
+[php]
+active_cli = "8.3"
+available = ["7.4", "8.1", "8.2", "8.3", "8.4", "8.5"]
+
+[web_servers]
+default = "apache"
+available = ["apache", "nginx"]
+
+[databases]
+default = "mysql"
+available = ["mysql", "mariadb"]
+
+[tunnels]
+default_mode = "quick"
+provider = "cloudflare"
+binary = "cloudflared"

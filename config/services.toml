@@ -1,0 +1,27 @@
+[services.apache]
+enabled = true
+port = 80
+ssl_port = 443
+autostart = true
+
+[services.mysql]
+enabled = true
+port = 3306
+autostart = true
+
+[services.redis]
+enabled = true
+port = 6379
+autostart = true
+
+[services.nginx]
+enabled = false
+port = 8080
+ssl_port = 8443
+autostart = false
+
+[services.mailpit]
+enabled = false
+http_port = 8025
+smtp_port = 1025
+autostart = false

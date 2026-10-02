@@ -1,0 +1,34 @@
+{
+  "name": "devbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DevBox — Complete PHP/Windows local development environment",
+  "workspaces": [
+    "apps/desktop"
+  ],
+  "scripts": {
+    "dev": "npm --workspace=apps/desktop run dev",
+    "build": "npm --workspace=apps/desktop run build",
+    "build:app": "npm --workspace=apps/desktop run build",
+    "build:installer": "npm run build:app && powershell -Command \"Copy-Item 'data/devbox.sqlite' 'data/devbox-template.sqlite' -Force; & \\\"$env:LocalAppData\\Programs\\Inno Setup 7\\ISCC.exe\\\" 'scripts/devbox-setup.iss'\"",
+    "tauri": "tauri",
+    "tauri:build": "tauri build",
+    "tauri:build:exe": "tauri build --bundles nsis",
+    "tauri:build:msi": "tauri build --bundles msi"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1"
+  },
+  "keywords": [
+    "devbox",
+    "php",
+    "windows",
+    "apache",
+    "nginx",
+    "mysql",
+    "redis",
+    "cloudflare"
+  ],
+  "author": "DevBox Team",
+  "license": "MIT"
+}

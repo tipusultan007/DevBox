@@ -1,0 +1,14 @@
+{
+  "name": "mailpit",
+  "version": "1.22.3",
+  "display_name": "Mailpit (Local Email Testing)",
+  "platform": "windows",
+  "architecture": "x64",
+  "download": {
+    "url": "https://github.com/axllent/mailpit/releases/download/v1.22.3/mailpit-windows-amd64.zip",
+    "sha256": "mailpit-sha256"
+  },
+  "binary": "mailpit.exe",
+  "smtp_port": 1025,
+  "http_port": 8025
+}

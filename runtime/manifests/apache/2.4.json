@@ -1,0 +1,16 @@
+{
+  "name": "apache",
+  "version": "2.4.62",
+  "display_name": "Apache HTTP Server 2.4",
+  "platform": "windows",
+  "architecture": "x64",
+  "download": {
+    "url": "https://www.apachelounge.com/download/VS17/binaries/httpd-2.4.62-240904-win64-VS17.zip",
+    "sha256": "apache-lounge-2.4.62-sha256"
+  },
+  "binary": "bin/httpd.exe",
+  "default_port": 80,
+  "default_ssl_port": 443,
+  "config_template": "conf/httpd.conf",
+  "vhosts_dir": "conf/extra/devbox-vhosts"
+}

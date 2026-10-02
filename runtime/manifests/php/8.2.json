@@ -1,0 +1,27 @@
+{
+  "name": "php",
+  "version": "8.2.27",
+  "display_name": "PHP 8.2",
+  "platform": "windows",
+  "architecture": "x64",
+  "download": {
+    "url": "https://windows.php.net/downloads/releases/php-8.2.27-Win32-vs16-x64.zip",
+    "sha256": "439dc21ba30ec5d8d08cb5c184c718b5b5463f822e11894d07d1a5fb7a3c306d"
+  },
+  "binary": "php.exe",
+  "cgi_binary": "php-cgi.exe",
+  "fastcgi_port": 9082,
+  "extensions": [
+    "curl",
+    "fileinfo",
+    "gd",
+    "mbstring",
+    "mysqli",
+    "openssl",
+    "pdo_mysql",
+    "zip",
+    "intl",
+    "sodium",
+    "opcache"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "redis",
+  "version": "7.2.4",
+  "display_name": "Redis 7.2 (Windows Port)",
+  "platform": "windows",
+  "architecture": "x64",
+  "download": {
+    "url": "https://github.com/tporadowski/redis/releases/download/v5.0.14.1/Redis-x64-5.0.14.1.zip",
+    "sha256": "redis-windows-sha256"
+  },
+  "binary": "redis-server.exe",
+  "cli_binary": "redis-cli.exe",
+  "default_port": 6379,
+  "config_file": "redis.windows.conf"
+}

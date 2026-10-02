@@ -1,0 +1,20 @@
+[app]
+name = "DevBox"
+version = "0.1.0"
+environment = "development"
+theme = "dark"
+
+[paths]
+projects = "D:\\Projects"
+runtime = "C:\\DevBox\\runtimes"
+logs = "C:\\DevBox\\logs"
+backups = "C:\\DevBox\\backups"
+data = "C:\\DevBox\\data"
+
+[defaults]
+php = "8.3"
+web_server = "apache"
+database = "mysql"
+domain_suffix = ".test"
+https = true
+trust_ca = true

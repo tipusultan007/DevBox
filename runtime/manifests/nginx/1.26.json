@@ -1,0 +1,16 @@
+{
+  "name": "nginx",
+  "version": "1.26.2",
+  "display_name": "Nginx 1.26 Stable",
+  "platform": "windows",
+  "architecture": "x64",
+  "download": {
+    "url": "https://nginx.org/download/nginx-1.26.2.zip",
+    "sha256": "nginx-1.26.2-sha256"
+  },
+  "binary": "nginx.exe",
+  "default_port": 8080,
+  "default_ssl_port": 8443,
+  "config_template": "conf/nginx.conf",
+  "vhosts_dir": "conf/conf.d"
+}

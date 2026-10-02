@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+apps/desktop/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Production Build Output
+dist/
+apps/desktop/dist/
+release/
+
+# Rust / Tauri Target
+src-tauri/target/
+target/
+
+# Local Database runtime files
+data/devbox.sqlite
+data/devbox.sqlite-shm
+data/devbox.sqlite-wal
+data/devbox.sqlite-journal
+backups/*.sql
+
+# Logs
+logs/
+*.log
+
+# OS & Environment
+.DS_Store
+Thumbs.db
+desktop.ini
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.sw?

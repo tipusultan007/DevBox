@@ -1,0 +1,24 @@
+{
+  "name": "php",
+  "version": "8.5.0-dev",
+  "display_name": "PHP 8.5 (Nightly / Preview)",
+  "platform": "windows",
+  "architecture": "x64",
+  "download": {
+    "url": "https://windows.php.net/downloads/snaps/master/latest/php-master-Win32-vs17-x64.zip",
+    "sha256": "preview-build"
+  },
+  "binary": "php.exe",
+  "cgi_binary": "php-cgi.exe",
+  "fastcgi_port": 9085,
+  "extensions": [
+    "curl",
+    "fileinfo",
+    "gd",
+    "mbstring",
+    "mysqli",
+    "openssl",
+    "pdo_mysql",
+    "zip"
+  ]
+}

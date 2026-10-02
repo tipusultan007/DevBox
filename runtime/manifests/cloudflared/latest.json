@@ -1,0 +1,12 @@
+{
+  "name": "cloudflared",
+  "version": "latest",
+  "display_name": "Cloudflare Tunnel (cloudflared)",
+  "platform": "windows",
+  "architecture": "x64",
+  "download": {
+    "url": "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe",
+    "sha256": "cloudflared-windows-sha256"
+  },
+  "binary": "cloudflared.exe"
+}

@@ -1,0 +1,18 @@
+{
+  "name": "mysql",
+  "version": "8.4.4",
+  "display_name": "MySQL Community Server 8.4 LTS",
+  "platform": "windows",
+  "architecture": "x64",
+  "download": {
+    "url": "https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-8.4.4-winx64.zip",
+    "sha256": "mysql-8.4.4-sha256"
+  },
+  "binary": "bin/mysqld.exe",
+  "cli_binary": "bin/mysql.exe",
+  "admin_binary": "bin/mysqladmin.exe",
+  "dump_binary": "bin/mysqldump.exe",
+  "default_port": 3306,
+  "data_dir": "data",
+  "config_file": "my.ini"
+}

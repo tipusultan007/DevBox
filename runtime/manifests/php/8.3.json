@@ -1,0 +1,27 @@
+{
+  "name": "php",
+  "version": "8.3.17",
+  "display_name": "PHP 8.3 (LTS Recommended)",
+  "platform": "windows",
+  "architecture": "x64",
+  "download": {
+    "url": "https://windows.php.net/downloads/releases/php-8.3.17-Win32-vs16-x64.zip",
+    "sha256": "44901fdf9559c5d1e4c965768560fe9dbdd78106201b19965a7d65b75ce91a27"
+  },
+  "binary": "php.exe",
+  "cgi_binary": "php-cgi.exe",
+  "fastcgi_port": 9083,
+  "extensions": [
+    "curl",
+    "fileinfo",
+    "gd",
+    "mbstring",
+    "mysqli",
+    "openssl",
+    "pdo_mysql",
+    "zip",
+    "intl",
+    "sodium",
+    "opcache"
+  ]
+}
