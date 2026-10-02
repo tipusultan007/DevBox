@@ -71,7 +71,7 @@ export const LicensingModal: React.FC<LicensingModalProps> = ({
               <ul className="space-y-1.5 text-[11px] text-devbox-muted">
                 <li>✓ Everything in Community</li>
                 <li>✓ Persistent Cloudflare Tunnels</li>
-                <li>✓ Environment Profiles (§41)</li>
+                <li>✓ Environment Profiles</li>
                 <li>✓ 1-Click Project Snapshots</li>
                 <li>✓ AI Troubleshooting Engine</li>
               </ul>

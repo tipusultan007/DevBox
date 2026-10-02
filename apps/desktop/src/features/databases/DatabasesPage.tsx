@@ -109,7 +109,7 @@ export const DatabasesPage: React.FC<DatabasesPageProps> = ({
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-glow transition-all active:scale-95"
           >
             <ExternalLink className="w-4 h-4" />
-            <span>Open Adminer Web GUI (§23)</span>
+            <span>Open Adminer Web GUI</span>
           </button>
 
           <button

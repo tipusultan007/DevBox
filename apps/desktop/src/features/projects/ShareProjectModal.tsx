@@ -211,7 +211,7 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
                   />
                 </div>
                 <div className="text-xs space-y-0.5">
-                  <span className="font-bold text-white block">Mobile Device Preview (§29)</span>
+                  <span className="font-bold text-white block">Mobile Device Preview</span>
                   <p className="text-[11px] text-devbox-subtle leading-tight">
                     Scan with your iPhone or Android camera to test this project on mobile cellular data.
                   </p>

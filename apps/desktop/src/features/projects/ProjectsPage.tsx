@@ -122,7 +122,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
         await fetch(`http://127.0.0.1:1421/api/projects/${p.id}/export-env`, { method: 'POST' });
       } catch {}
     }
-    setNotice(`Exported portable bundle: C:\\DevBox\\backups\\${p.slug}.devbox (§29)`);
+    setNotice(`Exported portable bundle: C:\\DevBox\\backups\\${p.slug}.devbox`);
     setTimeout(() => setNotice(null), 4500);
   };
 
@@ -179,7 +179,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-devbox-panel hover:bg-devbox-hover text-devbox-text border border-devbox-border text-xs font-semibold transition-all active:scale-95"
           >
             <UploadCloud className="w-4 h-4 text-blue-400" />
-            <span>Import .devbox (§29)</span>
+            <span>Import .devbox</span>
           </button>
 
           <button
@@ -345,7 +345,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
 
                   <button
                     onClick={() => handleClone(project)}
-                    title="Clone Project Stack (§28B)"
+                    title="Clone Project Stack"
                     className="flex-1 py-1 rounded-lg bg-devbox-panel hover:bg-devbox-hover text-devbox-muted hover:text-white border border-devbox-border text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors"
                   >
                     <Copy className="w-3 h-3" />
@@ -353,7 +353,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                   </button>
                   <button
                     onClick={() => handleExport(project)}
-                    title="Export Portable .devbox Bundle (§29)"
+                    title="Export Portable .devbox Bundle"
                     className="flex-1 py-1 rounded-lg bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/20 text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors"
                   >
                     <Package className="w-3 h-3" />
@@ -399,7 +399,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
 
                   <button
                     onClick={() => onOpenShareModal(project)}
-                    title="Cloudflare Share & Webhook Mode (§28D, §28E)"
+                    title="Cloudflare Share & Webhook Mode"
                     className="p-2 rounded-lg hover:bg-devbox-hover text-devbox-muted hover:text-blue-400 transition-colors"
                   >
                     <Share2 className="w-4 h-4" />

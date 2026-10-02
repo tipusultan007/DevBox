@@ -177,7 +177,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             <span>Navigation: <kbd className="px-1.5 py-0.5 rounded bg-devbox-card border border-devbox-border font-mono text-[9px]">Tab</kbd></span>
             <span>Select: <kbd className="px-1.5 py-0.5 rounded bg-devbox-card border border-devbox-border font-mono text-[9px]">Click</kbd></span>
           </div>
-          <span className="font-mono">DevBox Command Palette (§41)</span>
+          <span className="font-mono">DevBox Command Palette</span>
         </div>
       </div>
     </div>

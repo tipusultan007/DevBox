@@ -71,7 +71,7 @@ export const TunnelsPage: React.FC<TunnelsPageProps> = ({
 
         <div className="flex items-center gap-2 p-2 px-3 rounded-xl bg-devbox-panel border border-devbox-border text-xs text-devbox-muted">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Tunnel Guard: Non-HTTP ports automatically blocked (§14)</span>
+          <span>Tunnel Guard: Non-HTTP ports automatically blocked</span>
         </div>
       </div>
 
@@ -259,7 +259,7 @@ export const TunnelsPage: React.FC<TunnelsPageProps> = ({
       <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 space-y-2">
         <div className="flex items-center gap-2 font-bold text-amber-200">
           <ShieldAlert className="w-4 h-4 text-amber-400" />
-          <span>Tunnel Security Boundary Policy (§14)</span>
+          <span>Tunnel Security Boundary Policy</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px] pt-1">
           <div className="p-2 rounded bg-black/40 border border-amber-500/20 text-emerald-400">

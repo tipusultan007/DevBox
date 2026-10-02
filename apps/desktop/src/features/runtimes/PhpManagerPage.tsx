@@ -12,7 +12,10 @@ import {
   ExternalLink,
   Plus,
   X,
-  FileText
+  FileText,
+  Terminal,
+  Package,
+  GitBranch
 } from 'lucide-react';
 import { Runtime } from '../../types';
 
@@ -96,7 +99,7 @@ export const PhpManagerPage: React.FC<PhpManagerPageProps> = ({
         <div>
           <h2 className="text-xl font-bold text-white tracking-tight">PHP Version Manager</h2>
           <p className="text-xs text-devbox-muted">
-            Independent per-project runtimes and global CLI switching powered by JSON manifests (§9, §21).
+            Independent per-project runtimes and global CLI switching powered by official runtime manifests.
           </p>
         </div>
 
@@ -106,7 +109,7 @@ export const PhpManagerPage: React.FC<PhpManagerPageProps> = ({
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-glow transition-all active:scale-95"
           >
             <Plus className="w-4 h-4" />
-            <span>Install PHP Version (§21)</span>
+            <span>Install PHP Version</span>
           </button>
 
           <div className="p-2.5 px-4 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center gap-3">
@@ -214,7 +217,7 @@ export const PhpManagerPage: React.FC<PhpManagerPageProps> = ({
             className="w-full p-3.5 rounded-2xl border border-dashed border-devbox-border hover:border-purple-500/50 text-devbox-muted hover:text-purple-300 font-semibold text-xs flex items-center justify-center gap-2 transition-colors"
           >
             <Plus className="w-4 h-4" />
-            <span>+ Install PHP Version (§21)</span>
+            <span>+ Install PHP Version</span>
           </button>
         </div>
 
@@ -282,100 +285,121 @@ export const PhpManagerPage: React.FC<PhpManagerPageProps> = ({
             </div>
           </div>
         )}
+      </div>
 
-        {/* Developer Toolchains & Package Managers (Features.md §13, §14, §15) */}
-        <div className="space-y-4 pt-4">
-          <div>
-            <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-              <Layers className="w-4 h-4 text-purple-400" />
-              <span>Developer Toolchains & Package Managers</span>
-            </h3>
-            <p className="text-xs text-devbox-muted">
-              Independent binaries automatically placed in contextual CLI paths for every project.
-            </p>
-          </div>
+      {/* Developer Toolchains & Package Managers */}
+      <div className="space-y-4 pt-4 w-full">
+        <div>
+          <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+            <Layers className="w-4 h-4 text-purple-400" />
+            <span>Developer Toolchains & Package Managers</span>
+          </h3>
+          <p className="text-xs text-devbox-muted">
+            Independent binaries automatically placed in contextual CLI paths for every project.
+          </p>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Node.js & npm */}
-            <div className="glass-card p-5 rounded-2xl border border-devbox-border/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-                  Node.js & npm (§13)
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* Node.js & npm */}
+          <div className="glass-card p-5 rounded-2xl border border-devbox-border/80 space-y-4 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
+                    <Terminal className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white leading-tight">Node.js & npm</h4>
+                    <span className="text-[10px] text-devbox-subtle font-mono">Runtime & Package Manager</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap shrink-0">
                   v22.11.0 LTS
                 </span>
               </div>
-              <div className="space-y-1 text-xs font-mono text-devbox-subtle">
-                <p>npm: <span className="text-devbox-text">v10.9.0</span></p>
-                <p>npx: <span className="text-devbox-text">v10.9.0</span></p>
-                <p className="text-[10px] truncate text-devbox-muted">C:\DevBox\runtimes\node\v22</p>
+              <div className="space-y-1.5 p-3 rounded-xl bg-devbox-panel/70 border border-devbox-border/60 text-xs font-mono text-devbox-subtle">
+                <p className="flex justify-between items-center"><span>npm:</span> <strong className="text-devbox-text">v10.9.0</strong></p>
+                <p className="flex justify-between items-center"><span>npx:</span> <strong className="text-devbox-text">v10.9.0</strong></p>
+                <p className="text-[10px] truncate text-devbox-muted pt-1 border-t border-devbox-border/40">C:\DevBox\runtimes\node\v22</p>
               </div>
-              <button
-                onClick={() => {
-                  setNotice('Node.js v22 active. Vite, Next.js, and npm scripts ready.');
-                  setTimeout(() => setNotice(null), 3000);
-                }}
-                className="w-full py-1.5 rounded-xl bg-devbox-panel hover:bg-devbox-hover text-devbox-text text-xs font-semibold border border-devbox-border transition-colors"
-              >
-                Verify Toolchain
-              </button>
             </div>
+            <button
+              onClick={() => {
+                setNotice('Node.js v22 active. Vite, Next.js, and npm scripts ready.');
+                setTimeout(() => setNotice(null), 3000);
+              }}
+              className="w-full py-2 rounded-xl bg-devbox-panel hover:bg-devbox-hover text-devbox-text text-xs font-semibold border border-devbox-border transition-colors shadow-sm"
+            >
+              Verify Toolchain
+            </button>
+          </div>
 
-            {/* Composer */}
-            <div className="glass-card p-5 rounded-2xl border border-devbox-border/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-                  Composer (§14)
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
+          {/* Composer */}
+          <div className="glass-card p-5 rounded-2xl border border-devbox-border/80 space-y-4 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 shrink-0">
+                    <Package className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white leading-tight">Composer</h4>
+                    <span className="text-[10px] text-devbox-subtle font-mono">PHP Dependency Manager</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 whitespace-nowrap shrink-0">
                   v2.7.9
                 </span>
               </div>
-              <div className="space-y-1 text-xs font-mono text-devbox-subtle">
-                <p>Global: <span className="text-devbox-text">Installed</span></p>
-                <p>Context: <span className="text-purple-400">Uses Active PHP</span></p>
-                <p className="text-[10px] truncate text-devbox-muted">C:\DevBox\bin\composer.phar</p>
+              <div className="space-y-1.5 p-3 rounded-xl bg-devbox-panel/70 border border-devbox-border/60 text-xs font-mono text-devbox-subtle">
+                <p className="flex justify-between items-center"><span>Global:</span> <strong className="text-devbox-text">Installed</strong></p>
+                <p className="flex justify-between items-center"><span>Context:</span> <strong className="text-purple-400">Uses Active PHP</strong></p>
+                <p className="text-[10px] truncate text-devbox-muted pt-1 border-t border-devbox-border/40">C:\DevBox\bin\composer.phar</p>
               </div>
-              <button
-                onClick={() => {
-                  setNotice('Composer self-update checked: v2.7.9 is up to date.');
-                  setTimeout(() => setNotice(null), 3000);
-                }}
-                className="w-full py-1.5 rounded-xl bg-devbox-panel hover:bg-devbox-hover text-devbox-text text-xs font-semibold border border-devbox-border transition-colors"
-              >
-                Self-Update Composer
-              </button>
             </div>
+            <button
+              onClick={() => {
+                setNotice('Composer self-update checked: v2.7.9 is up to date.');
+                setTimeout(() => setNotice(null), 3000);
+              }}
+              className="w-full py-2 rounded-xl bg-devbox-panel hover:bg-devbox-hover text-devbox-text text-xs font-semibold border border-devbox-border transition-colors shadow-sm"
+            >
+              Self-Update Composer
+            </button>
+          </div>
 
-            {/* Git */}
-            <div className="glass-card p-5 rounded-2xl border border-devbox-border/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-                  Git SCM (§15)
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20">
+          {/* Git */}
+          <div className="glass-card p-5 rounded-2xl border border-devbox-border/80 space-y-4 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 shrink-0">
+                    <GitBranch className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white leading-tight">Git SCM</h4>
+                    <span className="text-[10px] text-devbox-subtle font-mono">Distributed Version Control</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20 whitespace-nowrap shrink-0">
                   v2.45.2
                 </span>
               </div>
-              <div className="space-y-1 text-xs font-mono text-devbox-subtle">
-                <p>Credentials: <span className="text-emerald-400">Windows DPAPI</span></p>
-                <p>Default Branch: <span className="text-devbox-text">main</span></p>
-                <p className="text-[10px] truncate text-devbox-muted">C:\DevBox\runtimes\git\cmd\git.exe</p>
+              <div className="space-y-1.5 p-3 rounded-xl bg-devbox-panel/70 border border-devbox-border/60 text-xs font-mono text-devbox-subtle">
+                <p className="flex justify-between items-center"><span>Credentials:</span> <strong className="text-emerald-400">Windows DPAPI</strong></p>
+                <p className="flex justify-between items-center"><span>Default Branch:</span> <strong className="text-devbox-text">main</strong></p>
+                <p className="text-[10px] truncate text-devbox-muted pt-1 border-t border-devbox-border/40">C:\DevBox\runtimes\git\cmd\git.exe</p>
               </div>
-              <button
-                onClick={() => {
-                  setNotice('Git integration verified: ready for cloning, branching, and status.');
-                  setTimeout(() => setNotice(null), 3000);
-                }}
-                className="w-full py-1.5 rounded-xl bg-devbox-panel hover:bg-devbox-hover text-devbox-text text-xs font-semibold border border-devbox-border transition-colors"
-              >
-                Test Git Engine
-              </button>
             </div>
+            <button
+              onClick={() => {
+                setNotice('Git integration verified: ready for cloning, branching, and status.');
+                setTimeout(() => setNotice(null), 3000);
+              }}
+              className="w-full py-2 rounded-xl bg-devbox-panel hover:bg-devbox-hover text-devbox-text text-xs font-semibold border border-devbox-border transition-colors shadow-sm"
+            >
+              Test Git Engine
+            </button>
           </div>
         </div>
       </div>

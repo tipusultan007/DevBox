@@ -209,7 +209,7 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <GitBranch className="w-4 h-4 text-orange-400" />
-                    <span className="text-xs font-semibold text-white">Initialize Git Repository (§15)</span>
+                    <span className="text-xs font-semibold text-white">Initialize Git Repository</span>
                   </div>
                   <input
                     type="checkbox"

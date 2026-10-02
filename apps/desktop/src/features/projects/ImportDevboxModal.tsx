@@ -72,7 +72,7 @@ export const ImportDevboxModal: React.FC<ImportDevboxModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-base text-white">Import DevBox Environment</h3>
-              <p className="text-[11px] text-devbox-subtle font-mono">*.devbox portable package format (§29)</p>
+              <p className="text-[11px] text-devbox-subtle font-mono">*.devbox portable package format</p>
             </div>
           </div>
           <button

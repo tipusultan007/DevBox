@@ -150,7 +150,7 @@ export const SettingsPage: React.FC = () => {
         <div className="flex items-center justify-between border-b border-devbox-border/60 pb-3">
           <h3 className="font-bold text-sm text-white flex items-center gap-2">
             <Shield className="w-4 h-4 text-emerald-400" />
-            <span>Windows Administrator Model (§33)</span>
+            <span>Windows Administrator Model</span>
           </h3>
           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
             Unprivileged User Mode (Secure)
@@ -184,7 +184,7 @@ export const SettingsPage: React.FC = () => {
       <div className="glass-card p-6 rounded-2xl border border-devbox-border/80 space-y-4">
         <h3 className="font-bold text-sm text-white flex items-center gap-2">
           <RefreshCw className="w-4 h-4 text-blue-400" />
-          <span>Update Architecture (§34)</span>
+          <span>Update Architecture</span>
         </h3>
 
         <p className="text-xs text-devbox-muted">
