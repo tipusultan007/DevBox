@@ -7,18 +7,190 @@ const path = require('path');
 const net = require('net');
 const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
-const { exec, execSync, spawn } = require('child_process');
+const { exec, execSync, spawn, execFileSync } = require('child_process');
 
 const PORT = 1421;
 const ROOT_DIR = path.resolve(__dirname, '../../');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const DB_PATH = path.join(DATA_DIR, 'devbox.sqlite');
 const RUNTIMES_DIR = path.join(ROOT_DIR, 'runtime', 'manifests');
+const SSL_KEY_PATH = path.join(DATA_DIR, 'devbox-key.pem');
+const SSL_CERT_PATH = path.join(DATA_DIR, 'devbox-cert.pem');
 
 // Active child tunnels map: id -> { proc, pid, publicUrl, hostname, projectId }
 const activeTunnels = new Map();
 // Active project PHP servers: projectId -> { proc, port, docRoot }
 const projectPhpServers = new Map();
+
+function isPortOpen(port, host = '127.0.0.1') {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(800);
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.connect(port, host);
+  });
+}
+
+function getMySqlCliPath() {
+  const candidates = [
+    'C:\\DevBox\\runtimes\\mysql\\bin\\mysql.exe',
+    'C:\\wamp64\\bin\\mysql\\mysql9.1.0\\bin\\mysql.exe',
+    'C:\\wamp64\\bin\\mysql\\mysql8.4.0\\bin\\mysql.exe',
+    'C:\\wamp64\\bin\\mysql\\mysql8.0.31\\bin\\mysql.exe',
+    'C:\\xampp\\mysql\\bin\\mysql.exe'
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  const wampMysqlDir = 'C:\\wamp64\\bin\\mysql';
+  if (fs.existsSync(wampMysqlDir)) {
+    try {
+      const dirs = fs.readdirSync(wampMysqlDir);
+      for (const d of dirs) {
+        const p = path.join(wampMysqlDir, d, 'bin', 'mysql.exe');
+        if (fs.existsSync(p)) return p;
+      }
+    } catch {}
+  }
+  return 'mysql.exe';
+}
+
+function getMySqlDaemonInfo() {
+  const candidates = [
+    {
+      bin: 'C:\\DevBox\\runtimes\\mysql\\bin\\mysqld.exe',
+      ini: 'C:\\DevBox\\runtimes\\mysql\\my.ini'
+    },
+    {
+      bin: 'C:\\wamp64\\bin\\mysql\\mysql9.1.0\\bin\\mysqld.exe',
+      ini: 'C:\\wamp64\\bin\\mysql\\mysql9.1.0\\my.ini'
+    }
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c.bin)) return c;
+  }
+  const wampMysqlDir = 'C:\\wamp64\\bin\\mysql';
+  if (fs.existsSync(wampMysqlDir)) {
+    try {
+      const dirs = fs.readdirSync(wampMysqlDir);
+      for (const d of dirs) {
+        const bin = path.join(wampMysqlDir, d, 'bin', 'mysqld.exe');
+        const ini = path.join(wampMysqlDir, d, 'my.ini');
+        if (fs.existsSync(bin)) return { bin, ini: fs.existsSync(ini) ? ini : null };
+      }
+    } catch {}
+  }
+  return null;
+}
+
+let mysqlChildProcess = null;
+
+async function ensureMysqlRunning() {
+  const isOpen = await isPortOpen(3306);
+  if (isOpen) {
+    try {
+      db.prepare("UPDATE services SET status = 'running' WHERE service_type = 'mysql'").run();
+    } catch {}
+    return true;
+  }
+
+  const daemon = getMySqlDaemonInfo();
+  if (!daemon) {
+    console.warn('[MySQL] No mysqld.exe binary found on host.');
+    return false;
+  }
+
+  try {
+    const args = (daemon.ini && fs.existsSync(daemon.ini))
+      ? [`--defaults-file=${daemon.ini}`, '--console']
+      : ['--console'];
+
+    mysqlChildProcess = spawn(daemon.bin, args, {
+      windowsHide: true,
+      detached: true,
+      stdio: 'ignore'
+    });
+    mysqlChildProcess.unref();
+
+    for (let i = 0; i < 15; i++) {
+      await new Promise(r => setTimeout(r, 400));
+      if (await isPortOpen(3306)) {
+        try {
+          db.prepare("UPDATE services SET status = 'running', pid = ? WHERE service_type = 'mysql'").run(mysqlChildProcess.pid || 3306);
+        } catch {}
+        recordLog('service', 'info', `MySQL Daemon started in user mode (PID: ${mysqlChildProcess.pid})`);
+        return true;
+      }
+    }
+  } catch (err) {
+    console.warn('[MySQL] Auto-start mysqld warning:', err.message);
+  }
+  return false;
+}
+
+async function executeMySql(query) {
+  await ensureMysqlRunning();
+  const cli = getMySqlCliPath();
+  if (fs.existsSync(cli) || cli === 'mysql.exe') {
+    try {
+      const out = execFileSync(cli, ['-u', 'root', '-e', query], {
+        windowsHide: true,
+        encoding: 'utf8',
+        timeout: 10000
+      });
+      return out;
+    } catch (e) {
+      // Fall through to PHP CLI
+    }
+  }
+
+  try {
+    const out = execFileSync('php', ['-r', '$c = @new mysqli("127.0.0.1", "root", ""); if ($c->connect_error) { fwrite(STDERR, $c->connect_error); exit(1); } if (!$c->query($argv[1])) { fwrite(STDERR, $c->error); exit(1); } echo "OK";', query], {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: 10000
+    });
+    return out;
+  } catch (err) {
+    console.warn(`[MySQL] Query failed (${query}):`, err.message);
+    return null;
+  }
+}
+
+async function createDatabaseIfNotExists(dbName) {
+  if (!dbName || !/^[a-zA-Z0-9_]+$/.test(dbName)) return false;
+  return await executeMySql(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
+}
+
+async function dropDatabaseIfExists(dbName) {
+  if (!dbName || !/^[a-zA-Z0-9_]+$/.test(dbName)) return false;
+  return await executeMySql(`DROP DATABASE IF EXISTS \`${dbName}\`;`);
+}
+
+async function syncAllDatabasesToMySql() {
+  try {
+    const rows = db.prepare('SELECT name FROM databases').all();
+    for (const r of rows) {
+      if (r && r.name) {
+        await createDatabaseIfNotExists(r.name);
+      }
+    }
+    console.log(`[MySQL] Verified ${rows.length} project databases in MySQL engine.`);
+  } catch (err) {
+    console.warn('[MySQL] Database sync warning:', err.message);
+  }
+}
 
 function getCloudflaredPath() {
   const candidates = [
@@ -42,9 +214,26 @@ function ensureProjectPhpServer(projectId, docRoot) {
 
   if (!docRoot || !fs.existsSync(docRoot)) return null;
 
+  const routerPath = path.join(docRoot, '.devbox_router.php');
+  if (!fs.existsSync(routerPath) && fs.existsSync(path.join(docRoot, 'index.php'))) {
+    try {
+      fs.writeFileSync(routerPath, `<?php
+$uri = urldecode(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH));
+if ($uri !== '/' && file_exists(__DIR__ . $uri)) {
+    return false;
+}
+require_once __DIR__ . '/index.php';
+`);
+    } catch {}
+  }
+
   const port = 18000 + Number(projectId);
   try {
-    const phpProc = spawn('php', ['-S', `127.0.0.1:${port}`, '-t', docRoot], {
+    const phpArgs = ['-S', `127.0.0.1:${port}`, '-t', docRoot];
+    if (fs.existsSync(routerPath)) {
+      phpArgs.push(routerPath);
+    }
+    const phpProc = spawn('php', phpArgs, {
       cwd: docRoot,
       windowsHide: true,
       stdio: 'ignore'
@@ -280,11 +469,13 @@ async function handleApiRequest(req, res) {
       `).run(newId, domain);
 
       // Add database if mysql selected
+      const dbName = slug.replace(/-/g, '_');
       if (body.services && body.services.includes('mysql')) {
         db.prepare(`
           INSERT INTO databases (project_id, engine, name, username, host, port, size_mb)
           VALUES (?, 'mysql', ?, 'root', '127.0.0.1', 3306, 0.1)
-        `).run(newId, slug.replace(/-/g, '_'));
+        `).run(newId, dbName);
+        await createDatabaseIfNotExists(dbName);
       }
 
       // Scaffolding physical project files on disk
@@ -297,7 +488,6 @@ async function handleApiRequest(req, res) {
         fs.mkdirSync(projDir, { recursive: true });
 
         const projectType = body.project_type || 'laravel';
-        const dbName = slug.replace(/-/g, '_');
         const cacheDir = path.join(ROOT_DIR, 'cache');
         if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
 
@@ -331,6 +521,11 @@ define( 'DB_PASSWORD', '' );
 define( 'DB_HOST', '127.0.0.1' );
 define( 'DB_CHARSET', 'utf8mb4' );
 define( 'DB_COLLATE', '' );
+
+// SSL Reverse Proxy Fix for DevBox
+if ((isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') || (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')) {
+    $_SERVER['HTTPS'] = 'on';
+}
 
 define( 'AUTH_KEY',         '${crypto.randomBytes(32).toString('hex')}' );
 define( 'SECURE_AUTH_KEY',  '${crypto.randomBytes(32).toString('hex')}' );
@@ -569,9 +764,29 @@ MAIL_FROM_NAME="\${APP_NAME}"
 
     if (pathname.match(/^\/api\/services\/([a-z0-9_-]+)\/(start|stop|restart)$/) && req.method === 'POST') {
       const [, st, action] = pathname.match(/^\/api\/services\/([a-z0-9_-]+)\/(start|stop|restart)$/);
-      const status = action === 'stop' ? 'stopped' : 'running';
-      const pid = status === 'running' ? Math.floor(Math.random() * 4000 + 3000) : null;
+      let status = action === 'stop' ? 'stopped' : 'running';
+      let pid = status === 'running' ? Math.floor(Math.random() * 4000 + 3000) : null;
+
+      if (st === 'mysql') {
+        if (action === 'start' || action === 'restart') {
+          const started = await ensureMysqlRunning();
+          status = started ? 'running' : 'stopped';
+          pid = mysqlChildProcess?.pid || 3306;
+        } else if (action === 'stop') {
+          try {
+            if (mysqlChildProcess) {
+              mysqlChildProcess.kill();
+              mysqlChildProcess = null;
+            }
+            execSync('taskkill /F /IM mysqld.exe', { windowsHide: true, stdio: 'ignore' });
+          } catch {}
+          status = 'stopped';
+          pid = null;
+        }
+      }
+
       db.prepare('UPDATE services SET status = ?, pid = ? WHERE service_type = ?').run(status, pid, st);
+      recordLog('service', 'info', `Service ${st} ${action} -> ${status}`);
       return jsonResponse({ success: true, service_type: st, status, pid });
     }
 
@@ -621,12 +836,17 @@ MAIL_FROM_NAME="\${APP_NAME}"
         VALUES ('mysql', ?, 'root', '127.0.0.1', 3306, 0.1)
       `);
       const result = insert.run(body.name);
+      await createDatabaseIfNotExists(body.name);
       const created = db.prepare('SELECT * FROM databases WHERE id = ?').get(result.lastInsertRowid);
       return jsonResponse(created);
     }
 
     if (pathname.startsWith('/api/databases/') && req.method === 'DELETE') {
       const id = pathname.split('/')[3];
+      const targetDb = db.prepare('SELECT name FROM databases WHERE id = ?').get(id);
+      if (targetDb && targetDb.name) {
+        await dropDatabaseIfExists(targetDb.name);
+      }
       db.prepare('DELETE FROM databases WHERE id = ?').run(id);
       return jsonResponse({ success: true });
     }
@@ -2105,12 +2325,21 @@ function handleVhostRequest(req, res, isHttps) {
           ...req.headers,
           host: project.domain || 'localhost',
           'x-forwarded-for': req.socket.remoteAddress || '127.0.0.1',
-          'x-forwarded-proto': isHttps ? 'https' : 'http'
+          'x-forwarded-proto': isHttps ? 'https' : 'http',
+          'x-forwarded-host': req.headers.host || project.domain || 'localhost',
+          'x-forwarded-port': isHttps ? '443' : '80',
+          'https': isHttps ? 'on' : 'off'
         }
       };
 
       const proxyReq = http.request(options, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        const responseHeaders = { ...proxyRes.headers };
+        if (isHttps && responseHeaders.location) {
+          const rawLocation = responseHeaders.location;
+          const hostPattern = (project.domain || rawHost).replace('.', '\\.');
+          responseHeaders.location = rawLocation.replace(new RegExp(`^http://(${hostPattern}|127\\.0\\.0\\.1|localhost)(:[0-9]+)?`, 'i'), `https://${project.domain || rawHost}`);
+        }
+        res.writeHead(proxyRes.statusCode, responseHeaders);
         proxyRes.pipe(res);
       });
 
@@ -2158,9 +2387,6 @@ httpVhostServer.listen(80, '0.0.0.0', () => {
 });
 
 // HTTPS VHost Server on Port 443
-const SSL_KEY_PATH = path.join(DATA_DIR, 'devbox-key.pem');
-const SSL_CERT_PATH = path.join(DATA_DIR, 'devbox-cert.pem');
-
 if (fs.existsSync(SSL_CERT_PATH) && fs.existsSync(SSL_KEY_PATH)) {
   try {
     const https = require('https');
@@ -2180,4 +2406,15 @@ if (fs.existsSync(SSL_CERT_PATH) && fs.existsSync(SSL_KEY_PATH)) {
     console.warn(`[DevBox Engine] Failed to initialize HTTPS listener: ${err.message}`);
   }
 }
+
+// 9. Startup Automation: Ensure MySQL is running & sync all project databases
+(async () => {
+  try {
+    await ensureMysqlRunning();
+    await syncAllDatabasesToMySql();
+  } catch (err) {
+    console.warn('[DevBox Engine] Initial MySQL startup warning:', err.message);
+  }
+})();
+
 
